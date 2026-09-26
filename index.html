@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#FBFAF6" />
+  <title>Scale of Existence — From the Smallest Scales to You</title>
+  <meta name="description" content="Scroll through the scale of reality, from theoretical fundamental scales through particles, cells and tiny creatures to the human scale." />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Scale of Existence" />
+  <meta property="og:description" content="From the smallest scales to you." />
+  <meta property="og:image" content="og-scale-of-existence.png" />
+  <link rel="icon" href="scale-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <noscript class="noscript">This interactive scale journey requires JavaScript.</noscript>
+
+  <main>
+    <section class="landing" id="landing" aria-labelledby="landing-title">
+      <div class="landing__wordmark">Scale of Existence</div>
+      <div class="landing__decor landing__decor--one" aria-hidden="true"></div>
+      <div class="landing__decor landing__decor--two" aria-hidden="true"></div>
+      <span class="landing__spark landing__spark--one" aria-hidden="true">✦</span>
+      <span class="landing__spark landing__spark--two" aria-hidden="true">✦</span>
+
+      <div class="landing__content">
+        <p class="eyebrow">An illustrated journey through scale</p>
+        <h1 id="landing-title">Scale of Existence</h1>
+        <p class="landing__subtitle">A journey through the sizes of reality — from the smallest scales to you.</p>
+        <div class="scroll-hint" aria-hidden="true">
+          <span class="scroll-hint__mouse"><span></span></span>
+          <span>Scroll to begin</span>
+          <span class="scroll-hint__arrow">↓</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="journey" id="journey" aria-label="Scale journey from theoretical fundamental scales to the human scale">
+      <div class="journey__sticky">
+        <div class="journey__background" aria-hidden="true"></div>
+        <div class="journey__category" id="stage-category"></div>
+        <div class="journey__counter" id="stage-counter">01 / 35</div>
+
+        <div class="journey__world" id="world" aria-hidden="true">
+          <svg class="scale-ribbon" viewBox="0 0 1440 900" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M -120 500 C 180 460, 310 540, 520 500 S 880 450, 1080 505 S 1340 555, 1560 495" />
+          </svg>
+          <div class="object-slot" data-slot="0"><img alt="" /></div>
+          <div class="object-slot" data-slot="1"><img alt="" /></div>
+          <div class="object-slot" data-slot="2"><img alt="" /></div>
+          <div class="object-slot" data-slot="3"><img alt="" /></div>
+        </div>
+
+        <article class="stage-info" id="stage-info" aria-live="polite">
+          <h2 class="stage-info__name" id="stage-name"></h2>
+          <p class="stage-info__scale" id="stage-scale"></p>
+          <p class="stage-info__qualifier" id="stage-qualifier"></p>
+          <p class="stage-info__description" id="stage-description"></p>
+        </article>
+
+        <p class="science-note" id="science-note">Elementary particles are treated as point-like; these illustrations are symbolic.</p>
+        <div class="progress-dots" id="progress-dots" role="progressbar" aria-label="Journey progress" aria-valuemin="1" aria-valuemax="35" aria-valuenow="1"></div>
+      </div>
+    </section>
+
+    <section class="completion" id="completion" aria-labelledby="completion-title">
+      <div class="completion__inner">
+        <p class="completion__eyebrow">Part one complete</p>
+        <h2 id="completion-title">You made it here.</h2>
+        <p class="completion__lead">35 scales explored.</p>
+
+        <div class="next-journey" id="next-journey">
+          <div class="next-journey__human"><img src="35-human.png" alt="" aria-hidden="true" /></div>
+          <div class="next-journey__content">
+            <div class="next-journey__lock" aria-hidden="true"><span class="lock-shackle"></span><span class="lock-body"></span></div>
+            <p class="next-journey__eyebrow">Next journey</p>
+            <h3>Beyond You</h3>
+            <p>Continue outward — from the human scale toward planets, stars, galaxies, and the observable universe.</p>
+            <button class="next-journey__button" id="next-journey-button" disabled>Journey locked</button>
+          </div>
+        </div>
+
+        <button class="replay-button" id="replay-button" type="button">Replay from the beginning</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="scale-data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
