@@ -1,346 +1,1276 @@
 (() => {
-  'use strict';
+  "use strict";
 
   const stages = window.SCALE_STAGES;
-  if (!Array.isArray(stages) || stages.length !== 35) throw new Error('Expected exactly 35 stages.');
 
-  const journey = document.getElementById('journey');
-  const categoryEl = document.getElementById('stage-category');
-  const counterEl = document.getElementById('stage-counter');
-  const nameEl = document.getElementById('stage-name');
-  const scaleEl = document.getElementById('stage-scale');
-  const qualifierEl = document.getElementById('stage-qualifier');
-  const descriptionEl = document.getElementById('stage-description');
-  const scienceNote = document.getElementById('science-note');
-  const progressDots = document.getElementById('progress-dots');
-  const nextJourney = document.getElementById('next-journey');
-  const nextJourneyButton = document.getElementById('next-journey-button');
-  const replayButton = document.getElementById('replay-button');
+  if (!Array.isArray(stages) || stages.length !== 35) {
+    throw new Error("Expected exactly 35 stages.");
+  }
 
-  const slots = [...document.querySelectorAll('.object-slot')].map((element) => ({
-    element,
-    image: element.querySelector('img'),
-    stageIndex: null
-  }));
+  /* ========================================================
+     DOM
+     ======================================================== */
 
-  const STORAGE_KEY = 'scaleOfExistence.progress.v1';
-  const BASE_AXIS_PX = 300;
-  const PEEK_PX = 22;
-  const MAX_VISUAL_SCALE = 140;
-  const HUMAN_HOLD_VH = 1.65;
+  const landing = document.getElementById("landing");
+  const journey = document.getElementById("journey");
+  const completion = document.getElementById("completion");
+  const stageLayer = document.getElementById("stage-layer");
 
-  let viewportWidth = innerWidth;
-  let viewportHeight = innerHeight;
-  let segmentDistances = [];
-  let cumulative = [];
-  let journeyTravelPx = 0;
-  let humanHoldPx = 0;
-  let visibleStage = 0;
-  let lastVisibleStage = -1;
-  let maxStageReached = 0;
-  let complete = false;
-  let rafPending = false;
+  const categoryEl = document.getElementById("stage-category");
+  const counterEl = document.getElementById("stage-counter");
+  const nameEl = document.getElementById("stage-name");
+  const scaleEl = document.getElementById("stage-scale");
+  const qualifierEl = document.getElementById("stage-qualifier");
+  const descriptionEl = document.getElementById("stage-description");
+  const stageInfo = document.getElementById("stage-info");
+  const scienceNote = document.getElementById("science-note");
+  const progressDots = document.getElementById("progress-dots");
+  const revisitGrid = document.getElementById("revisit-grid");
 
-  const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
-  const lerp = (a, b, t) => a + (b - a) * t;
-  const ease = (t) => 1 - Math.pow(1 - t, 3);
-  const pad2 = (n) => String(n).padStart(2, '0');
-  const isLiteral = (s) => s && s.scaleMode === 'literal' && Number.isFinite(s.characteristicMeters) && s.characteristicMeters > 0;
+  /* ========================================================
+     CONSTANTS
+     ======================================================== */
 
-  const logLerp = (a, b, t) => {
-    const la = Math.log10(a);
-    const lb = Math.log10(b);
-    return Math.pow(10, lerp(la, lb, t));
-  };
+  const BASE_CANVAS_PX = 300;
+  const ANALYSIS_SIZE = 128;
+  const ALPHA_THRESHOLD = 28;
 
-  const targetPx = (stageIndex) => {
-    if (stageIndex === 34) return viewportWidth < 768 ? 430 : Math.min(560, viewportHeight * 0.62);
-    if (viewportWidth < 768) return clamp(viewportWidth * 0.58, 175, 235);
-    return clamp(viewportHeight * 0.34, 280, 340);
-  };
+  // Browser-safe visual cap. The underlying mathematical ratio is not changed.
+  // Huge objects are shown as cropped edge fragments instead of creating
+  // multi-billion-pixel DOM elements.
+  const MAX_SUBJECT_AXIS_PX = 42000;
+
+  const ANIMATION_MS = 720;
+  const REDUCED_ANIMATION_MS = 180;
+
+  const STORAGE_KEY = "scaleOfExistence.progress.v2";
+
+  const reducedMotion = window.matchMedia(
+    "(prefers-reduced-motion: reduce)"
+  );
+
+  /* ========================================================
+     STATE
+     ======================================================== */
+
+  let currentStage = 0;
+  let isAnimating = false;
+  let wheelLatched = false;
+  let wheelResetTimer = null;
+
+  let touchStartY = null;
+  let touchStartedInsideJourney = false;
+
+  let completed = false;
+
+  const assetCache = new Map();
+  const objectNodes = new Map();
+
+  /* ========================================================
+     GENERIC HELPERS
+     ======================================================== */
+
+  const clamp = (value, min, max) =>
+    Math.min(max, Math.max(min, value));
+
+  const lerp = (a, b, t) =>
+    a + (b - a) * t;
+
+  const easeInOut = (t) =>
+    t < 0.5
+      ? 4 * t * t * t
+      : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+  const pad2 = (value) =>
+    String(value).padStart(2, "0");
+
+  const isLiteral = (stage) =>
+    stage &&
+    stage.scaleMode === "literal" &&
+    Number.isFinite(stage.characteristicMeters) &&
+    stage.characteristicMeters > 0;
+
+  const viewport = () => ({
+    width: window.innerWidth,
+    height: window.innerHeight
+  });
+
+  /* ========================================================
+     PERSISTENCE
+     ======================================================== */
 
   function loadProgress() {
     try {
-      const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
-      if (!data || data.version !== 1) return;
-      maxStageReached = clamp(Number(data.maxStageReached || 0), 0, 35);
-      complete = Boolean(data.completedPart1);
-    } catch (_) {}
+      const data = JSON.parse(
+        localStorage.getItem(STORAGE_KEY) || "null"
+      );
+
+      completed = Boolean(data?.completed);
+    } catch {
+      completed = false;
+    }
   }
 
   function saveProgress() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        version: 1,
-        completedPart1: complete,
-        maxStageReached,
-        completedAt: complete ? new Date().toISOString() : null
-      }));
-    } catch (_) {}
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          version: 2,
+          completed,
+          completedAt: completed
+            ? new Date().toISOString()
+            : null
+        })
+      );
+    } catch {
+      // Persistence is optional.
+    }
   }
 
-  function buildDots() {
-    const frag = document.createDocumentFragment();
-    stages.forEach((stage, index) => {
-      const dot = document.createElement('span');
-      dot.className = 'progress-dot';
-      dot.dataset.index = index;
-      frag.appendChild(dot);
+  /* ========================================================
+     IMAGE LOADING + AUTOMATIC TRANSPARENT-PADDING ANALYSIS
+
+     Every generated PNG can have a different amount of empty
+     transparent canvas. We measure the visible alpha bounds at
+     runtime and scale/position the SUBJECT rather than the 2048px
+     PNG canvas. This fixes many apparent scale inconsistencies.
+     ======================================================== */
+
+  async function loadStageAsset(index) {
+    if (assetCache.has(index)) {
+      return assetCache.get(index);
+    }
+
+    const promise = new Promise((resolve) => {
+      const stage = stages[index];
+      const image = new Image();
+
+      image.decoding = "async";
+      image.src = stage.asset;
+
+      image.onload = async () => {
+        try {
+          if (image.decode) {
+            await image.decode();
+          }
+        } catch {
+          // The image is already loaded; decode failure is non-fatal.
+        }
+
+        const bounds = analyseAlphaBounds(image);
+
+        resolve({
+          image,
+          bounds
+        });
+      };
+
+      image.onerror = () => {
+        resolve({
+          image: null,
+          bounds: {
+            x: 0.1,
+            y: 0.1,
+            width: 0.8,
+            height: 0.8,
+            cx: 0.5,
+            cy: 0.5
+          }
+        });
+      };
     });
-    progressDots.appendChild(frag);
+
+    assetCache.set(index, promise);
+    return promise;
   }
 
-  function updateDots(active) {
-    [...progressDots.children].forEach((dot, i) => {
-      dot.classList.toggle('is-past', i < active);
-      dot.classList.toggle('is-current', i === active);
+  function analyseAlphaBounds(image) {
+    const canvas = document.createElement("canvas");
+    canvas.width = ANALYSIS_SIZE;
+    canvas.height = ANALYSIS_SIZE;
+
+    const context = canvas.getContext("2d", {
+      willReadFrequently: true
     });
-    progressDots.setAttribute('aria-valuenow', String(active + 1));
-  }
 
-  function segmentVH(from, to, index) {
-    if (index === 0) return 1.9;
-    if (index === 1) return 1.35;
-    if (index === 2) return 1.55;
-    if (!isLiteral(from) || !isLiteral(to)) return 1.35;
-    const decades = Math.abs(Math.log10(to.characteristicMeters / from.characteristicMeters));
-    return clamp(1.1 + 0.22 * decades, 1.1, 2.2);
-  }
+    context.clearRect(0, 0, ANALYSIS_SIZE, ANALYSIS_SIZE);
+    context.drawImage(
+      image,
+      0,
+      0,
+      ANALYSIS_SIZE,
+      ANALYSIS_SIZE
+    );
 
-  function recalc() {
-    viewportWidth = innerWidth;
-    viewportHeight = innerHeight;
-    segmentDistances = [];
-    cumulative = [0];
+    const pixels = context.getImageData(
+      0,
+      0,
+      ANALYSIS_SIZE,
+      ANALYSIS_SIZE
+    ).data;
 
-    for (let i = 0; i < stages.length - 1; i += 1) {
-      const px = segmentVH(stages[i], stages[i + 1], i) * viewportHeight;
-      segmentDistances.push(px);
-      cumulative.push(cumulative[cumulative.length - 1] + px);
+    let minX = ANALYSIS_SIZE;
+    let minY = ANALYSIS_SIZE;
+    let maxX = -1;
+    let maxY = -1;
+
+    for (let y = 0; y < ANALYSIS_SIZE; y += 1) {
+      for (let x = 0; x < ANALYSIS_SIZE; x += 1) {
+        const alpha =
+          pixels[(y * ANALYSIS_SIZE + x) * 4 + 3];
+
+        if (alpha < ALPHA_THRESHOLD) {
+          continue;
+        }
+
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+      }
     }
 
-    journeyTravelPx = cumulative[cumulative.length - 1];
-    humanHoldPx = HUMAN_HOLD_VH * viewportHeight;
-    journey.style.height = `${journeyTravelPx + humanHoldPx + viewportHeight}px`;
-  }
-
-  function symbolicPixels(objectIndex, focusIndex) {
-    if (objectIndex === 0) return focusIndex === 0 ? targetPx(0) : 0.2;
-    if (objectIndex === 1) {
-      if (focusIndex === 0) return 12;
-      if (focusIndex === 1) return 90;
-      if (focusIndex === 2) return 34;
-      return 4;
-    }
-    if (objectIndex === 2) {
-      if (focusIndex === 1) return 42;
-      if (focusIndex === 2) return 90;
-      if (focusIndex === 3) return 22;
-      return 4;
-    }
-    return 1;
-  }
-
-  function restPixels(objectIndex, focusIndex) {
-    const obj = stages[objectIndex];
-    const focus = stages[focusIndex];
-    if (!obj || !focus) return 0;
-
-    if (objectIndex <= 2 || focusIndex <= 2) {
-      if (objectIndex <= 2) return symbolicPixels(objectIndex, focusIndex);
-      if (focusIndex === 2 && objectIndex === 3) return 150;
-      return 8;
+    if (maxX < minX || maxY < minY) {
+      return {
+        x: 0.1,
+        y: 0.1,
+        width: 0.8,
+        height: 0.8,
+        cx: 0.5,
+        cy: 0.5
+      };
     }
 
-    if (isLiteral(obj) && isLiteral(focus)) {
-      return (obj.characteristicMeters / focus.characteristicMeters) * targetPx(focusIndex);
-    }
+    // Add a tiny safety margin around anti-aliased edges.
+    const pad = 2;
 
-    return targetPx(focusIndex);
+    minX = clamp(minX - pad, 0, ANALYSIS_SIZE - 1);
+    minY = clamp(minY - pad, 0, ANALYSIS_SIZE - 1);
+    maxX = clamp(maxX + pad, 0, ANALYSIS_SIZE - 1);
+    maxY = clamp(maxY + pad, 0, ANALYSIS_SIZE - 1);
+
+    const x = minX / ANALYSIS_SIZE;
+    const y = minY / ANALYSIS_SIZE;
+    const width = (maxX - minX + 1) / ANALYSIS_SIZE;
+    const height = (maxY - minY + 1) / ANALYSIS_SIZE;
+
+    return {
+      x,
+      y,
+      width,
+      height,
+      cx: x + width / 2,
+      cy: y + height / 2
+    };
   }
 
-  function transitionPixels(objectIndex, fromIndex, t) {
-    const from = stages[fromIndex];
-    const to = stages[fromIndex + 1];
-
-    if (fromIndex >= 3 && isLiteral(from) && isLiteral(to)) {
-      const cameraMeters = logLerp(from.characteristicMeters, to.characteristicMeters, ease(t));
-      const cameraPx = lerp(targetPx(fromIndex), targetPx(fromIndex + 1), ease(t));
-      const obj = stages[objectIndex];
-      if (isLiteral(obj)) return (obj.characteristicMeters / cameraMeters) * cameraPx;
-    }
-
-    return lerp(restPixels(objectIndex, fromIndex), restPixels(objectIndex, Math.min(fromIndex + 1, 34)), ease(t));
-  }
-
-  function restX(role, pixels) {
-    const w = viewportWidth;
-    if (role === 0) return w * 0.5;
-    if (role === -1) return pixels > w * 0.9 ? PEEK_PX - pixels / 2 : w * 0.12;
-    if (role === 1) return pixels > w * 0.9 ? w - PEEK_PX + pixels / 2 : w * 0.88;
-    if (role <= -2) return -w * 0.24;
-    if (role >= 2) return pixels > w ? w + pixels / 2 : w * 1.22;
-    return w * 0.5;
-  }
-
-  function transitionX(objectIndex, fromIndex, t) {
-    const p0 = restPixels(objectIndex, fromIndex);
-    const p1 = restPixels(objectIndex, Math.min(fromIndex + 1, 34));
-    const x0 = restX(objectIndex - fromIndex, p0);
-    const x1 = restX(objectIndex - (fromIndex + 1), p1);
-    return lerp(x0, x1, ease(t));
-  }
-
-  function assignSlot(slot, index) {
-    if (slot.stageIndex === index) return;
-    slot.stageIndex = index;
-
+  async function ensureObjectNode(index) {
     if (index < 0 || index >= stages.length) {
-      slot.image.removeAttribute('src');
-      slot.element.style.opacity = '0';
+      return null;
+    }
+
+    if (objectNodes.has(index)) {
+      return objectNodes.get(index);
+    }
+
+    const asset = await loadStageAsset(index);
+
+    const node = document.createElement("div");
+    node.className = "stage-object";
+    node.dataset.stage = String(index);
+
+    const scaler = document.createElement("div");
+    scaler.className = "stage-object__scale";
+
+    const image = document.createElement("img");
+    image.src = stages[index].asset;
+    image.alt = "";
+    image.draggable = false;
+
+    /*
+      Put the PNG so its measured visible subject centre sits on
+      the stage object's origin.
+    */
+    image.style.left =
+      `${-BASE_CANVAS_PX * asset.bounds.cx}px`;
+
+    image.style.top =
+      `${-BASE_CANVAS_PX * asset.bounds.cy}px`;
+
+    scaler.appendChild(image);
+    node.appendChild(scaler);
+    stageLayer.appendChild(node);
+
+    const record = {
+      node,
+      scaler,
+      image,
+      bounds: asset.bounds
+    };
+
+    objectNodes.set(index, record);
+    return record;
+  }
+
+  async function prepareAround(index) {
+    const indexes = new Set([
+      index - 1,
+      index,
+      index + 1,
+      index + 2
+    ]);
+
+    await Promise.all(
+      [...indexes]
+        .filter((i) => i >= 0 && i < stages.length)
+        .map((i) => ensureObjectNode(i))
+    );
+  }
+
+  function backgroundPreload() {
+    const preloadOne = async (index) => {
+      if (index >= stages.length) {
+        return;
+      }
+
+      await loadStageAsset(index);
+
+      if ("requestIdleCallback" in window) {
+        requestIdleCallback(
+          () => preloadOne(index + 1),
+          { timeout: 1400 }
+        );
+      } else {
+        setTimeout(() => preloadOne(index + 1), 120);
+      }
+    };
+
+    preloadOne(4);
+  }
+
+  /* ========================================================
+     PHYSICAL / VISUAL SCALE MODEL
+     ======================================================== */
+
+  function targetCurrentAxisPx(index) {
+    const { width, height } = viewport();
+
+    // On mobile the current subject gets roughly the central 80%
+    // of the width, while height prevents collisions with copy.
+    const normal = Math.min(
+      width * (width < 768 ? 0.80 : 0.46),
+      height * (width < 768 ? 0.36 : 0.35)
+    );
+
+    if (index === 34) {
+      // Human is a tall final subject.
+      return Math.min(
+        width < 768 ? width * 0.72 : width * 0.34,
+        height * (width < 768 ? 0.52 : 0.56)
+      );
+    }
+
+    return clamp(
+      normal,
+      width < 768 ? 200 : 270,
+      width < 768 ? 310 : 350
+    );
+  }
+
+  /*
+    The first three stages require authored symbolic choreography.
+
+    - String is theoretical.
+    - Quark and electron do not have measured physical diameters.
+
+    Therefore giant right-edge previews for those transitions are
+    explicitly symbolic and the UI tells the user so.
+
+    From Proton onward, literal relative linear dimensions are used.
+  */
+  function subjectAxisPixelsAtRest(objectIndex, focusIndex) {
+    if (
+      objectIndex < 0 ||
+      objectIndex >= stages.length ||
+      focusIndex < 0 ||
+      focusIndex >= stages.length
+    ) {
+      return 0;
+    }
+
+    const object = stages[objectIndex];
+    const focus = stages[focusIndex];
+    const target = targetCurrentAxisPx(focusIndex);
+
+    if (objectIndex === focusIndex) {
+      return target;
+    }
+
+    if (focusIndex <= 2) {
+      if (objectIndex < focusIndex) {
+        return 0.15;
+      }
+
+      if (objectIndex === focusIndex + 1) {
+        // Deliberately enormous edge cue.
+        return MAX_SUBJECT_AXIS_PX;
+      }
+
+      return 0;
+    }
+
+    if (!isLiteral(object)) {
+      // Point-like/theoretical objects behind a finite-size focus.
+      return 0.15;
+    }
+
+    if (!isLiteral(focus)) {
+      return target;
+    }
+
+    const physicalRatio =
+      object.characteristicMeters /
+      focus.characteristicMeters;
+
+    return clamp(
+      target * physicalRatio,
+      0.000001,
+      MAX_SUBJECT_AXIS_PX
+    );
+  }
+
+  function recordMetrics(index, subjectAxisPx) {
+    const record = objectNodes.get(index);
+
+    if (!record) {
+      return null;
+    }
+
+    const stage = stages[index];
+    const bounds = record.bounds;
+
+    const axisFraction =
+      stage.axis === "height"
+        ? bounds.height
+        : bounds.width;
+
+    const safeAxisFraction =
+      Math.max(axisFraction, 0.03);
+
+    const scale =
+      subjectAxisPx /
+      (BASE_CANVAS_PX * safeAxisFraction);
+
+    const subjectWidthPx =
+      BASE_CANVAS_PX *
+      bounds.width *
+      scale;
+
+    const subjectHeightPx =
+      BASE_CANVAS_PX *
+      bounds.height *
+      scale;
+
+    return {
+      scale,
+      subjectWidthPx,
+      subjectHeightPx
+    };
+  }
+
+  function peekWidthPx() {
+    const { width } = viewport();
+
+    // User requested roughly 3–5% of the viewport.
+    return clamp(width * 0.05, 16, 72);
+  }
+
+  function restXForRole(role, subjectWidthPx) {
+    const { width } = viewport();
+    const peek = peekWidthPx();
+
+    if (role === 0) {
+      return width * 0.5;
+    }
+
+    if (role < 0) {
+      // Previous object: never invade the centre.
+      if (subjectWidthPx <= peek) {
+        return peek * 0.55;
+      }
+
+      // Only the rightmost ~5vw of its visible subject remains.
+      return peek - subjectWidthPx / 2;
+    }
+
+    if (role > 0) {
+      // Next object: if enormous, show only a small left edge.
+      if (subjectWidthPx <= peek) {
+        return width - peek * 0.55;
+      }
+
+      return (
+        width -
+        peek +
+        subjectWidthPx / 2
+      );
+    }
+
+    return width * 0.5;
+  }
+
+  function objectY() {
+    const { width, height } = viewport();
+
+    return height * (width < 768 ? 0.36 : 0.39);
+  }
+
+  function stateForObject(objectIndex, focusIndex) {
+    const subjectAxisPx =
+      subjectAxisPixelsAtRest(
+        objectIndex,
+        focusIndex
+      );
+
+    const metrics =
+      recordMetrics(objectIndex, subjectAxisPx);
+
+    if (!metrics) {
+      return {
+        x: 0,
+        y: objectY(),
+        scale: 0,
+        opacity: 0,
+        locator: false,
+        subjectAxisPx: 0
+      };
+    }
+
+    const role = objectIndex - focusIndex;
+
+    const locator =
+      role < 0 &&
+      subjectAxisPx > 0 &&
+      subjectAxisPx < 1;
+
+    return {
+      x: restXForRole(
+        role,
+        metrics.subjectWidthPx
+      ),
+      y: objectY(),
+      scale: metrics.scale,
+      opacity:
+        Math.abs(role) <= 1 ? 1 : 0,
+      locator,
+      subjectAxisPx
+    };
+  }
+
+  function interpolatePositive(a, b, t) {
+    if (a <= 0 || b <= 0) {
+      return lerp(a, b, t);
+    }
+
+    return Math.exp(
+      lerp(
+        Math.log(a),
+        Math.log(b),
+        t
+      )
+    );
+  }
+
+  /* ========================================================
+     SCENE RENDERING
+     ======================================================== */
+
+  function applyObjectState(
+    index,
+    state,
+    zIndex
+  ) {
+    const record = objectNodes.get(index);
+
+    if (!record) {
       return;
     }
 
-    const stage = stages[index];
-    slot.image.src = stage.asset;
-    slot.element.classList.toggle('measure-height', stage.axis === 'height');
+    record.node.classList.toggle(
+      "is-locator",
+      state.locator
+    );
+
+    record.node.style.zIndex = String(zIndex);
+
+    record.node.style.transform =
+      `translate3d(${state.x}px, ${state.y}px, 0)`;
+
+    record.node.style.opacity =
+      String(state.opacity);
+
+    record.scaler.style.transform =
+      `scale(${Math.max(state.scale, 0.000001)})`;
   }
 
-  function renderSlots(fromIndex, t) {
-    const indices = [fromIndex - 1, fromIndex, fromIndex + 1, fromIndex + 2];
-
-    slots.forEach((slot, i) => {
-      const objectIndex = indices[i];
-      assignSlot(slot, objectIndex);
-
-      if (objectIndex < 0 || objectIndex >= stages.length) return;
-
-      const pixels = transitionPixels(objectIndex, fromIndex, t);
-      const x = transitionX(objectIndex, fromIndex, t);
-      const locator = pixels > 0 && pixels < 1 && objectIndex < fromIndex + 1 && objectIndex > 0;
-
-      slot.element.classList.toggle('is-locator', locator);
-      slot.element.style.left = `${x}px`;
-      slot.element.style.top = objectIndex === 34 ? '39%' : '42%';
-      slot.element.style.setProperty('--object-base-size', `${BASE_AXIS_PX}px`);
-      slot.element.style.setProperty('--object-scale', String(clamp(pixels / BASE_AXIS_PX, 1 / BASE_AXIS_PX, MAX_VISUAL_SCALE)));
-
-      let opacity = 1;
-      if (objectIndex === fromIndex + 2) opacity = clamp(t * 1.35, 0, 1) * 0.82;
-      if (objectIndex === fromIndex - 1) opacity = clamp(1 - t * 1.4, 0.25, 1);
-      slot.element.style.opacity = String(opacity);
-    });
-  }
-
-  function infoOpacity(t) {
-    if (t < 0.15) return 1 - t / 0.15;
-    if (t > 0.82) return (t - 0.82) / 0.18;
-    return 0;
-  }
-
-  function setStage(index) {
-    const stage = stages[index];
-    categoryEl.textContent = stage.category;
-    counterEl.textContent = `${pad2(stage.id)} / 35`;
-    nameEl.textContent = stage.name;
-    scaleEl.textContent = stage.displayScale;
-    qualifierEl.textContent = stage.qualifier || '';
-    descriptionEl.textContent = stage.description;
-    document.documentElement.style.setProperty('--journey-bg', stage.background || '#FBFAF6');
-    scienceNote.classList.toggle('is-visible', index === 1 || index === 2);
-    updateDots(index);
-    visibleStage = index;
-
-    if (index + 1 > maxStageReached) {
-      maxStageReached = index + 1;
-      saveProgress();
-    }
-
-    preload(index);
-  }
-
-  function applyCompletion() {
-    if (!complete) return;
-    nextJourney.classList.add('is-unlocked');
-    nextJourneyButton.textContent = 'Journey unlocked';
-  }
-
-  function unlock() {
-    if (maxStageReached < 35) return;
-    complete = true;
-    saveProgress();
-    applyCompletion();
-  }
-
-  function mapScroll(y) {
-    if (y >= journeyTravelPx) {
-      return {segment:33,t:1,hold:true,holdProgress:clamp((y - journeyTravelPx) / humanHoldPx, 0, 1)};
-    }
-
-    let segment = 0;
-    for (let i = 0; i < segmentDistances.length; i += 1) {
-      if (y >= cumulative[i]) segment = i;
-      if (y < cumulative[i + 1]) break;
-    }
-
-    return {segment,t:clamp((y - cumulative[segment]) / segmentDistances[segment], 0, 1),hold:false,holdProgress:0};
-  }
-
-  function preload(index) {
-    [index - 1, index, index + 1, index + 2].forEach((i) => {
-      if (!stages[i]) return;
-      const img = new Image();
-      img.src = stages[i].asset;
-    });
-  }
-
-  function render() {
-    rafPending = false;
-    const top = journey.getBoundingClientRect().top + scrollY;
-    const localY = clamp(scrollY - top, 0, journeyTravelPx + humanHoldPx);
-    const state = mapScroll(localY);
-
-    renderSlots(state.segment, state.t);
-
-    const nextVisible = state.hold ? 34 : (state.t < 0.5 ? state.segment : Math.min(state.segment + 1, 34));
-    if (nextVisible !== lastVisibleStage) {
-      setStage(nextVisible);
-      lastVisibleStage = nextVisible;
-    }
-
-    if (state.hold) {
-      const fade = clamp(1 - (state.holdProgress - 0.48) / 0.42, 0, 1);
-      document.documentElement.style.setProperty('--stage-info-opacity', String(fade));
-      if (state.holdProgress >= 0.92) {
-        maxStageReached = 35;
-        unlock();
+  function hideUnused(usedIndexes) {
+    for (const [index, record] of objectNodes) {
+      if (!usedIndexes.has(index)) {
+        record.node.style.opacity = "0";
+        record.node.classList.remove(
+          "is-locator"
+        );
       }
-    } else {
-      document.documentElement.style.setProperty('--stage-info-opacity', String(infoOpacity(state.t)));
+    }
+  }
+
+  function renderStatic(focusIndex) {
+    const used = new Set();
+
+    for (
+      let index = focusIndex - 1;
+      index <= focusIndex + 1;
+      index += 1
+    ) {
+      if (
+        index < 0 ||
+        index >= stages.length ||
+        !objectNodes.has(index)
+      ) {
+        continue;
+      }
+
+      used.add(index);
+
+      const state =
+        stateForObject(index, focusIndex);
+
+      const role = index - focusIndex;
+      const zIndex =
+        role === 0 ? 6 : 3;
+
+      applyObjectState(
+        index,
+        state,
+        zIndex
+      );
     }
 
-    const reached = state.hold ? 35 : clamp(state.segment + (state.t > 0.92 ? 2 : 1), 1, 35);
-    if (reached > maxStageReached) {
-      maxStageReached = reached;
+    hideUnused(used);
+  }
+
+  async function animateStage(
+    fromIndex,
+    toIndex
+  ) {
+    if (fromIndex === toIndex) {
+      return;
+    }
+
+    await Promise.all([
+      prepareAround(fromIndex),
+      prepareAround(toIndex)
+    ]);
+
+    const used = new Set();
+
+    for (
+      let index =
+        Math.min(fromIndex, toIndex) - 1;
+      index <=
+        Math.max(fromIndex, toIndex) + 1;
+      index += 1
+    ) {
+      if (
+        index >= 0 &&
+        index < stages.length
+      ) {
+        used.add(index);
+      }
+    }
+
+    const states = new Map();
+
+    for (const index of used) {
+      states.set(index, {
+        from: stateForObject(
+          index,
+          fromIndex
+        ),
+        to: stateForObject(
+          index,
+          toIndex
+        )
+      });
+    }
+
+    const duration =
+      reducedMotion.matches
+        ? REDUCED_ANIMATION_MS
+        : ANIMATION_MS;
+
+    const startTime = performance.now();
+
+    await new Promise((resolve) => {
+      function frame(now) {
+        const raw =
+          (now - startTime) / duration;
+
+        const t =
+          easeInOut(clamp(raw, 0, 1));
+
+        for (const index of used) {
+          const pair =
+            states.get(index);
+
+          const subjectAxisPx =
+            interpolatePositive(
+              pair.from.subjectAxisPx,
+              pair.to.subjectAxisPx,
+              t
+            );
+
+          const metrics =
+            recordMetrics(
+              index,
+              Math.max(
+                subjectAxisPx,
+                0.000001
+              )
+            );
+
+          const x =
+            lerp(
+              pair.from.x,
+              pair.to.x,
+              t
+            );
+
+          const y =
+            lerp(
+              pair.from.y,
+              pair.to.y,
+              t
+            );
+
+          const opacity =
+            lerp(
+              pair.from.opacity,
+              pair.to.opacity,
+              t
+            );
+
+          const locator =
+            t > 0.8
+              ? pair.to.locator
+              : pair.from.locator;
+
+          const isDestination =
+            index === toIndex;
+
+          const isOrigin =
+            index === fromIndex;
+
+          applyObjectState(
+            index,
+            {
+              x,
+              y,
+              scale:
+                metrics?.scale || 0,
+              opacity,
+              locator,
+              subjectAxisPx
+            },
+            isDestination
+              ? 7
+              : isOrigin
+                ? 6
+                : 3
+          );
+        }
+
+        if (raw < 1) {
+          requestAnimationFrame(frame);
+        } else {
+          resolve();
+        }
+      }
+
+      requestAnimationFrame(frame);
+    });
+
+    hideUnused(
+      new Set([
+        toIndex - 1,
+        toIndex,
+        toIndex + 1
+      ])
+    );
+
+    renderStatic(toIndex);
+  }
+
+  /* ========================================================
+     TEXT / UI
+     ======================================================== */
+
+  function setStageText(index) {
+    const stage = stages[index];
+
+    categoryEl.textContent =
+      stage.category;
+
+    counterEl.textContent =
+      `${pad2(stage.id)} / ${stages.length}`;
+
+    nameEl.textContent =
+      stage.name;
+
+    scaleEl.textContent =
+      stage.displayScale;
+
+    qualifierEl.textContent =
+      stage.qualifier || "";
+
+    descriptionEl.textContent =
+      stage.description;
+
+    document.documentElement.style.setProperty(
+      "--journey-bg",
+      stage.background || "#FBFAF6"
+    );
+
+    scienceNote.classList.toggle(
+      "is-visible",
+      index <= 2
+    );
+
+    updateProgress(index);
+  }
+
+  function buildProgress() {
+    const fragment =
+      document.createDocumentFragment();
+
+    stages.forEach(() => {
+      const dot =
+        document.createElement("span");
+
+      dot.className = "progress-dot";
+      fragment.appendChild(dot);
+    });
+
+    progressDots.appendChild(fragment);
+  }
+
+  function updateProgress(index) {
+    [...progressDots.children].forEach(
+      (dot, i) => {
+        dot.classList.toggle(
+          "is-past",
+          i < index
+        );
+
+        dot.classList.toggle(
+          "is-current",
+          i === index
+        );
+      }
+    );
+
+    progressDots.setAttribute(
+      "aria-valuenow",
+      String(index + 1)
+    );
+  }
+
+  function buildRevisitGrid() {
+    const fragment =
+      document.createDocumentFragment();
+
+    stages.forEach((stage, index) => {
+      const button =
+        document.createElement("button");
+
+      button.type = "button";
+      button.className = "revisit-button";
+
+      button.innerHTML = `
+        <span class="revisit-button__number">${pad2(stage.id)}</span>
+        <span class="revisit-button__name">${stage.name}</span>
+      `;
+
+      button.addEventListener(
+        "click",
+        async () => {
+          currentStage = index;
+
+          await prepareAround(
+            currentStage
+          );
+
+          setStageText(
+            currentStage
+          );
+
+          renderStatic(
+            currentStage
+          );
+
+          journey.scrollIntoView({
+            behavior:
+              reducedMotion.matches
+                ? "auto"
+                : "smooth",
+            block: "start"
+          });
+        }
+      );
+
+      fragment.appendChild(button);
+    });
+
+    revisitGrid.appendChild(fragment);
+  }
+
+  /* ========================================================
+     JOURNEY NAVIGATION
+     ======================================================== */
+
+  function journeyAlignment() {
+    const rect =
+      journey.getBoundingClientRect();
+
+    return {
+      rect,
+      aligned:
+        Math.abs(rect.top) <=
+          Math.max(4, innerHeight * 0.035)
+    };
+  }
+
+  async function goToStage(nextIndex) {
+    if (
+      isAnimating ||
+      nextIndex < 0 ||
+      nextIndex >= stages.length ||
+      nextIndex === currentStage
+    ) {
+      return;
+    }
+
+    isAnimating = true;
+
+    stageInfo.classList.add(
+      "is-transitioning"
+    );
+
+    const from =
+      currentStage;
+
+    await animateStage(
+      from,
+      nextIndex
+    );
+
+    currentStage =
+      nextIndex;
+
+    setStageText(
+      currentStage
+    );
+
+    stageInfo.classList.remove(
+      "is-transitioning"
+    );
+
+    isAnimating = false;
+  }
+
+  async function navigateDirection(direction) {
+    if (isAnimating) {
+      return;
+    }
+
+    if (direction > 0) {
+      if (
+        currentStage <
+        stages.length - 1
+      ) {
+        await goToStage(
+          currentStage + 1
+        );
+        return;
+      }
+
+      completed = true;
       saveProgress();
+
+      completion.scrollIntoView({
+        behavior:
+          reducedMotion.matches
+            ? "auto"
+            : "smooth",
+        block: "start"
+      });
+
+      return;
     }
+
+    if (currentStage > 0) {
+      await goToStage(
+        currentStage - 1
+      );
+      return;
+    }
+
+    landing.scrollIntoView({
+      behavior:
+        reducedMotion.matches
+          ? "auto"
+          : "smooth",
+      block: "start"
+    });
   }
 
-  function requestRender() {
-    if (rafPending) return;
-    rafPending = true;
-    requestAnimationFrame(render);
+  /* ========================================================
+     DESKTOP WHEEL
+     One deliberate wheel/trackpad gesture = one stage.
+     ======================================================== */
+
+  function resetWheelLatchSoon() {
+    clearTimeout(
+      wheelResetTimer
+    );
+
+    wheelResetTimer =
+      setTimeout(() => {
+        wheelLatched = false;
+      }, 170);
   }
 
-  addEventListener('scroll', requestRender, {passive:true});
-  addEventListener('resize', () => { recalc(); requestRender(); });
-  replayButton.addEventListener('click', () => scrollTo({top:0,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'}));
+  window.addEventListener(
+    "wheel",
+    (event) => {
+      const { rect, aligned } =
+        journeyAlignment();
 
-  loadProgress();
-  buildDots();
-  recalc();
-  applyCompletion();
-  stages.slice(0,3).forEach((s) => { const i = new Image(); i.src = s.asset; });
-  setStage(0);
-  requestRender();
+      /*
+        Approaching journey from the landing:
+        first scroll gesture lands on String.
+      */
+      if (
+        !aligned &&
+        event.deltaY > 0 &&
+        rect.top > 0 &&
+        rect.top <
+          innerHeight * 0.72
+      ) {
+        event.preventDefault();
+
+        journey.scrollIntoView({
+          behavior:
+            reducedMotion.matches
+              ? "auto"
+              : "smooth",
+          block: "start"
+        });
+
+        return;
+      }
+
+      if (!aligned) {
+        return;
+      }
+
+      event.preventDefault();
+      resetWheelLatchSoon();
+
+      if (
+        wheelLatched ||
+        Math.abs(event.deltaY) < 8
+      ) {
+        return;
+      }
+
+      wheelLatched = true;
+
+      navigateDirection(
+        event.deltaY > 0 ? 1 : -1
+      );
+    },
+    { passive: false }
+  );
+
+  /* ========================================================
+     MOBILE TOUCH
+     One swipe = one stage while the journey is aligned.
+     ======================================================== */
+
+  window.addEventListener(
+    "touchstart",
+    (event) => {
+      if (
+        event.touches.length !== 1
+      ) {
+        return;
+      }
+
+      const { aligned } =
+        journeyAlignment();
+
+      touchStartedInsideJourney =
+        aligned;
+
+      touchStartY =
+        event.touches[0].clientY;
+    },
+    { passive: true }
+  );
+
+  window.addEventListener(
+    "touchmove",
+    (event) => {
+      if (
+        touchStartedInsideJourney
+      ) {
+        event.preventDefault();
+      }
+    },
+    { passive: false }
+  );
+
+  window.addEventListener(
+    "touchend",
+    (event) => {
+      if (
+        !touchStartedInsideJourney ||
+        touchStartY === null
+      ) {
+        touchStartY = null;
+        touchStartedInsideJourney =
+          false;
+        return;
+      }
+
+      const endY =
+        event.changedTouches[0]?.clientY;
+
+      if (!Number.isFinite(endY)) {
+        return;
+      }
+
+      const delta =
+        touchStartY - endY;
+
+      touchStartY = null;
+      touchStartedInsideJourney =
+        false;
+
+      if (Math.abs(delta) < 35) {
+        return;
+      }
+
+      navigateDirection(
+        delta > 0 ? 1 : -1
+      );
+    },
+    { passive: true }
+  );
+
+  /* ========================================================
+     KEYBOARD
+     ======================================================== */
+
+  window.addEventListener(
+    "keydown",
+    (event) => {
+      const { aligned } =
+        journeyAlignment();
+
+      if (!aligned) {
+        return;
+      }
+
+      if (
+        [
+          "ArrowDown",
+          "PageDown",
+          " "
+        ].includes(event.key)
+      ) {
+        event.preventDefault();
+        navigateDirection(1);
+      }
+
+      if (
+        [
+          "ArrowUp",
+          "PageUp"
+        ].includes(event.key)
+      ) {
+        event.preventDefault();
+        navigateDirection(-1);
+      }
+    }
+  );
+
+  /* ========================================================
+     RESIZE
+     ======================================================== */
+
+  let resizeTimer = null;
+
+  window.addEventListener(
+    "resize",
+    () => {
+      clearTimeout(resizeTimer);
+
+      resizeTimer =
+        setTimeout(() => {
+          renderStatic(
+            currentStage
+          );
+        }, 80);
+    }
+  );
+
+  /* ========================================================
+     BOOT
+     ======================================================== */
+
+  async function boot() {
+    loadProgress();
+    buildProgress();
+    buildRevisitGrid();
+
+    await prepareAround(0);
+
+    setStageText(0);
+    renderStatic(0);
+
+    // First few images should be decoded immediately.
+    await Promise.all(
+      [1, 2, 3]
+        .filter(
+          (index) =>
+            index < stages.length
+        )
+        .map(
+          (index) =>
+            loadStageAsset(index)
+        )
+    );
+
+    backgroundPreload();
+  }
+
+  boot().catch((error) => {
+    console.error(
+      "Scale of Existence failed to initialize:",
+      error
+    );
+  });
 })();

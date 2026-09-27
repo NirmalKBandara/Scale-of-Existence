@@ -4,24 +4,42 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#FBFAF6" />
+
   <title>Scale of Existence — From the Smallest Scales to You</title>
-  <meta name="description" content="Scroll through the scale of reality, from theoretical fundamental scales through particles, cells and tiny creatures to the human scale." />
+  <meta
+    name="description"
+    content="Scroll through the scale of reality, from theoretical fundamental scales through particles, cells, tiny creatures and the human scale."
+  />
+
   <meta property="og:type" content="website" />
   <meta property="og:title" content="Scale of Existence" />
   <meta property="og:description" content="From the smallest scales to you." />
   <meta property="og:image" content="assets/meta/og-scale-of-existence.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+
   <link rel="icon" href="assets/meta/scale-icon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;500;600;700;800;900&display=swap"
+    rel="stylesheet"
+  />
   <link rel="stylesheet" href="css/styles.css" />
 </head>
+
 <body>
-  <noscript class="noscript">This interactive scale journey requires JavaScript.</noscript>
+  <noscript class="noscript">
+    This interactive scale journey requires JavaScript.
+  </noscript>
 
   <main>
-    <section class="landing" id="landing" aria-labelledby="landing-title">
+    <!-- =====================================================
+         LANDING
+         ===================================================== -->
+    <section class="landing snap-section" id="landing" aria-labelledby="landing-title">
       <div class="landing__wordmark">Scale of Existence</div>
+
       <div class="landing__decor landing__decor--one" aria-hidden="true"></div>
       <div class="landing__decor landing__decor--two" aria-hidden="true"></div>
       <span class="landing__spark landing__spark--one" aria-hidden="true">✦</span>
@@ -30,7 +48,10 @@
       <div class="landing__content">
         <p class="eyebrow">An illustrated journey through scale</p>
         <h1 id="landing-title">Scale of Existence</h1>
-        <p class="landing__subtitle">A journey through the sizes of reality — from the smallest scales to you.</p>
+        <p class="landing__subtitle">
+          A journey through the sizes of reality — from the smallest scales to you.
+        </p>
+
         <div class="scroll-hint" aria-hidden="true">
           <span class="scroll-hint__mouse"><span></span></span>
           <span>Scroll to begin</span>
@@ -39,52 +60,87 @@
       </div>
     </section>
 
-    <section class="journey" id="journey" aria-label="Scale journey from theoretical fundamental scales to the human scale">
-      <div class="journey__sticky">
-        <div class="journey__background" aria-hidden="true"></div>
-        <div class="journey__category" id="stage-category"></div>
-        <div class="journey__counter" id="stage-counter">01 / 35</div>
+    <!-- =====================================================
+         DISCRETE SCALE JOURNEY
+         One deliberate wheel/swipe gesture = one stage.
+         ===================================================== -->
+    <section
+      class="journey snap-section"
+      id="journey"
+      aria-label="Scale journey from theoretical fundamental scales to the human scale"
+    >
+      <div class="journey__background" aria-hidden="true"></div>
 
-        <div class="journey__world" id="world" aria-hidden="true">
-          <svg class="scale-ribbon" viewBox="0 0 1440 900" preserveAspectRatio="none" aria-hidden="true">
-            <path d="M -120 500 C 180 460, 310 540, 520 500 S 880 450, 1080 505 S 1340 555, 1560 495" />
-          </svg>
-          <div class="object-slot" data-slot="0"><img alt="" /></div>
-          <div class="object-slot" data-slot="1"><img alt="" /></div>
-          <div class="object-slot" data-slot="2"><img alt="" /></div>
-          <div class="object-slot" data-slot="3"><img alt="" /></div>
-        </div>
+      <div class="journey__category" id="stage-category"></div>
+      <div class="journey__counter" id="stage-counter">01 / 35</div>
 
-        <article class="stage-info" id="stage-info" aria-live="polite">
-          <h2 class="stage-info__name" id="stage-name"></h2>
-          <p class="stage-info__scale" id="stage-scale"></p>
-          <p class="stage-info__qualifier" id="stage-qualifier"></p>
-          <p class="stage-info__description" id="stage-description"></p>
-        </article>
+      <div class="journey__world" id="world" aria-hidden="true">
+        <svg
+          class="scale-ribbon"
+          viewBox="0 0 1440 900"
+          preserveAspectRatio="none"
+          aria-hidden="true"
+        >
+          <path
+            d="M -100 405 C 190 360, 325 440, 525 405 S 885 350, 1085 407 S 1345 460, 1540 400"
+          />
+        </svg>
 
-        <p class="science-note" id="science-note">Elementary particles are treated as point-like; these illustrations are symbolic.</p>
-        <div class="progress-dots" id="progress-dots" role="progressbar" aria-label="Journey progress" aria-valuemin="1" aria-valuemax="35" aria-valuenow="1"></div>
+        <div class="stage-layer" id="stage-layer"></div>
+      </div>
+
+      <article class="stage-info" id="stage-info" aria-live="polite">
+        <h2 class="stage-info__name" id="stage-name"></h2>
+        <p class="stage-info__scale" id="stage-scale"></p>
+        <p class="stage-info__qualifier" id="stage-qualifier"></p>
+        <p class="stage-info__description" id="stage-description"></p>
+      </article>
+
+      <p class="science-note" id="science-note">
+        Quarks and electrons are treated as point-like. Their large edge previews here
+        are symbolic transition cues, not measured physical diameters.
+      </p>
+
+      <div
+        class="progress-dots"
+        id="progress-dots"
+        role="progressbar"
+        aria-label="Journey progress"
+        aria-valuemin="1"
+        aria-valuemax="35"
+        aria-valuenow="1"
+      ></div>
+
+      <div class="gesture-hint" id="gesture-hint" aria-hidden="true">
+        <span>Scroll</span>
+        <span>↓</span>
       </div>
     </section>
 
-    <section class="completion" id="completion" aria-labelledby="completion-title">
+    <!-- =====================================================
+         COMPLETION
+         No locked next journey. User can revisit any scale.
+         ===================================================== -->
+    <section class="completion snap-section" id="completion" aria-labelledby="completion-title">
       <div class="completion__inner">
         <p class="completion__eyebrow">Part one complete</p>
         <h2 id="completion-title">You made it here.</h2>
-        <p class="completion__lead">35 scales explored.</p>
+        <p class="completion__lead">
+          35 scales explored. Pick any one to look at it again.
+        </p>
 
-        <div class="next-journey" id="next-journey">
-          <div class="next-journey__human"><img src="assets/items/35-human.png" alt="" aria-hidden="true" /></div>
-          <div class="next-journey__content">
-            <div class="next-journey__lock" aria-hidden="true"><span class="lock-shackle"></span><span class="lock-body"></span></div>
-            <p class="next-journey__eyebrow">Next journey</p>
-            <h3>Beyond You</h3>
-            <p>Continue outward — from the human scale toward planets, stars, galaxies, and the observable universe.</p>
-            <button class="next-journey__button" id="next-journey-button" disabled>Journey locked</button>
+        <div class="revisit-panel">
+          <div class="revisit-panel__heading">
+            <p>Revisit the journey</p>
+            <span>Choose a scale</span>
           </div>
-        </div>
 
-        <button class="replay-button" id="replay-button" type="button">Replay from the beginning</button>
+          <div
+            class="revisit-grid"
+            id="revisit-grid"
+            aria-label="Choose a scale to revisit"
+          ></div>
+        </div>
       </div>
     </section>
   </main>
